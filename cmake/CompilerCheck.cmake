@@ -1,4 +1,4 @@
-function(c_cpp_template_check_libfuzzer_support var_name)
+function(c_cpp_learn_check_libfuzzer_support var_name)
   set(LibFuzzerTestSource
       "
 #include <cstdint>
@@ -12,7 +12,7 @@ extern \"C\" int LLVMFuzzerTestOneInput(const std::uint8_t *data, std::size_t si
   check_cxx_source_compiles("${LibFuzzerTestSource}" ${var_name})
 endfunction()
 
-function(c_cpp_template_check_sanitizer_support sanitizer_type var_name)
+function(c_cpp_learn_check_sanitizer_support sanitizer_type var_name)
   include(CheckCXXSourceCompiles)
   if(NOT MSVC)
     set(CMAKE_REQUIRED_FLAGS "-fsanitize=${sanitizer_type}")

@@ -13,20 +13,20 @@ set(CMAKE_CXX_EXTENSIONS ON)
 
 # Set the project name and language
 project(
-  c_cpp_template
+  c_cpp_learn
   VERSION 0.0.1
   DESCRIPTION ""
-  HOMEPAGE_URL "%%myurl%%"
+  HOMEPAGE_URL "https://github.com/PongKJ/c_cpp_learn"
   LANGUAGES CXX C)
 
 include(cmake/PreventInSourceBuilds.cmake)
 include(ProjectOptions.cmake)
 
-c_cpp_template_setup_options()
+c_cpp_learn_setup_options()
 
-c_cpp_template_global_options()
+c_cpp_learn_global_options()
 
-c_cpp_template_local_options()
+c_cpp_learn_local_options()
 
 # don't know if this should be set globally from here or not...
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
@@ -40,13 +40,13 @@ string(
             8
             GIT_SHORT_SHA)
 
-target_compile_features(c_cpp_template_options INTERFACE cxx_std_${CMAKE_CXX_STANDARD})
+target_compile_features(c_cpp_learn_options INTERFACE cxx_std_${CMAKE_CXX_STANDARD})
 
-add_library(c_cpp_template::c_cpp_template_options ALIAS c_cpp_template_options)
-add_library(c_cpp_template::c_cpp_template_warnings ALIAS c_cpp_template_warnings)
+add_library(c_cpp_learn::c_cpp_learn_options ALIAS c_cpp_learn_options)
+add_library(c_cpp_learn::c_cpp_learn_warnings ALIAS c_cpp_learn_warnings)
 
-# add_library(c_cpp_template::c_cpp_template_options INTERFACE IMPORTED)
-# add_library(c_cpp_template::c_cpp_template_warnings INTERFACE IMPORTED)
+# add_library(c_cpp_learn::c_cpp_learn_options INTERFACE IMPORTED)
+# add_library(c_cpp_learn::c_cpp_learn_warnings INTERFACE IMPORTED)
 
 # configure files based on CMake configuration options
 add_subdirectory(configured_files)
@@ -67,9 +67,9 @@ if(BUILD_TESTING)
   add_subdirectory(test)
 endif()
 
-if(c_cpp_template_BUILD_FUZZ_TESTS)
+if(c_cpp_learn_BUILD_FUZZ_TESTS)
   message(AUTHOR_WARNING "Building Fuzz Tests, using fuzzing sanitizer https://www.llvm.org/docs/LibFuzzer.html")
-  if(NOT c_cpp_template_ENABLE_ADDRESS_SANITIZER AND NOT c_cpp_template_ENABLE_THREAD_SANITIZER)
+  if(NOT c_cpp_learn_ENABLE_ADDRESS_SANITIZER AND NOT c_cpp_learn_ENABLE_THREAD_SANITIZER)
     message(WARNING "You need asan or tsan enabled for meaningful fuzz testing")
   endif()
   add_subdirectory(fuzz_test)
@@ -96,11 +96,11 @@ include(cmake/PackageProject.cmake)
 
 # Add other targets that you want installed here, by default we just package the one executable we
 # know we want to ship
-c_cpp_template_package_project(
+c_cpp_learn_package_project(
   TARGETS
   intro
-  # c_cpp_template_options
-  # c_cpp_template_warnings
+  # c_cpp_learn_options
+  # c_cpp_learn_warnings
   # FIXME: this does not work! CK PRIVATE_DEPENDENCIES_CONFIGURED project_options project_warnings
 )
 

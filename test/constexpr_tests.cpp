@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <c_cpp_template/sample_library.hpp>
+#include <c_cpp_learn/sample_library.hpp>
 
 TEST( SampleLibraryTest, factorial_constexpr ) {
     static_assert( factorial_constexpr( 0 ) == 1 );

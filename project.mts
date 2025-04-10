@@ -2,30 +2,32 @@ import { PathOrFileDescriptor } from 'fs'
 import { usePowerShell } from 'zx'
 import 'zx/globals'
 import { MSVCInstallDir } from './scripts/consts.mjs'
-import { findCmdsInEnv, refreshEnv } from './scripts/envHelper.mts'
+import { refreshEnv, getEnvDiff } from './scripts/envHelper.mts'
 import { setupMSVCDevCmd } from './scripts/setupMSVCDev.mts'
+import { findCmdsInEnv, loadFromJson, saveToJson, replaceJsonNode } from './scripts/utils.mts'
+
+// Do Not show callstack on error
+const NoCallstackOnError = true
 
 const cachePath = '.project_cache.json'
 const presetsFilePath = 'CMakePresets.json'
-let script_postfix = ''
+let scriptPostfix = ''
+let sourceCommandPrefix = ''
 
 const $$ = $({ stdio: 'inherit' })
 
 if (process.platform === 'win32') {
   usePowerShell()
-  script_postfix = 'bat'
+  scriptPostfix = 'bat'
+  sourceCommandPrefix = ""
 }
 
 if (process.platform === 'linux') {
-  script_postfix = 'sh'
+  scriptPostfix = 'sh'
+  sourceCommandPrefix = "source " // Attention: space after source
 }
 
-function jsonParse(json: PathOrFileDescriptor) {
-  let content = fs.readFileSync(json, 'utf8')
-  return JSON.parse(content)
-}
-
-interface CmakeOptionsContext {
+interface CmakeOptions {
   packagingMaintainerMode: boolean,
   warningsAsErrors: boolean,
   enableClangTidy: boolean,
@@ -63,14 +65,14 @@ interface TargetContext {
   args: string[]
 }
 
+// These need user to specify
 interface SetupContext {
   cmakePreset: CmakePresetContext
+  cmakeOptions: CmakeOptions
 }
 
 interface ProjectContext {
   projectName: string
-  // decided by the preset
-  cmakePreset: string
   sourceDir: string
   binaryDir: string
   installDir: string
@@ -103,8 +105,9 @@ interface StateMachine {
 
 class ProjectContext {
   cachePath: PathOrFileDescriptor
+  cmakePreset: string
+  cmakeOptions: CmakeOptions
   projectContext: ProjectContext
-  cmakeOptionsContext: CmakeOptionsContext
   stateMachine: StateMachine
 
   setTargetContext(type: TargetType, context: TargetContext) {
@@ -125,62 +128,44 @@ class ProjectContext {
   constructor(setup?: SetupContext) {
     this.cachePath = cachePath
     if (setup) {
-      this.setup(setup.cmakePreset)
+      this.setup(setup)
     }
     else
       try {
-        const parsedCache = jsonParse(this.cachePath)
+        const parsedCache = loadFromJson(this.cachePath)
         this.projectContext = parsedCache.projectContext
-        this.cmakeOptionsContext = parsedCache.cmakeOptionsContext
+        this.cmakePreset = parsedCache.cmakePreset
+        this.cmakeOptions = parsedCache.cmakeOptions
         this.stateMachine = parsedCache.stateMachine
       } catch (e) {
         throw new Error('Failed to load cache file, please run setup first')
       }
   }
 
-  // NOTE: Change following to set a default value for each config
-  private setup = function (preset: CmakePresetContext) {
+  private setup = function (setup: SetupContext) {
     try {
-      const presets = jsonParse(preset.presetsFilePath)
+      const presets = loadFromJson(setup.cmakePreset.presetsFilePath)
+      this.cmakePreset = setup.cmakePreset.selectedPreset
+      this.cmakeOptions = setup.cmakeOptions
+      // NOTE: To Change sourceDir from absolute to relative
+      // const sourceDir = process.cwd()
       // these variables is used by 'eval' command bellow
-      const sourceDir = process.cwd()
-      const presetName = preset.selectedPreset
+      const sourceDir = "."
+      const presetName = setup.cmakePreset.selectedPreset
       const env = dotenv.parse(fs.readFileSync('./.github/constants.env'))
       this.projectContext = {
-        cmakePreset: preset.selectedPreset,
-        sourceDir: process.cwd(),
-        buildTarget: ['all'],
+        sourceDir: sourceDir,
+        buildTarget: [],
         launchTarget: [],
         launchArgs: [],
         testArgs: [],
         projectName: env.PROJECT_NAME,
         binaryDir: presets.configurePresets[0].binaryDir.replace(/\$\{(.*?)\}/g, (_, p1) => eval(p1)),
         installDir: presets.configurePresets[0].installDir.replace(/\$\{(.*?)\}/g, (_, p1) => eval(p1)),
-        buildType: presets.configurePresets.find(item => item.name == preset.selectedPreset).cacheVariables.CMAKE_BUILD_TYPE
+        buildType: presets.configurePresets.find(item => item.name == setup.cmakePreset.selectedPreset).cacheVariables.CMAKE_BUILD_TYPE
       }
     } catch (e) {
-      throw new Error('Failed to parser cmake presets, please check the exists of this preset or the format of the preset')
-    }
-    this.cmakeOptionsContext = {
-      packagingMaintainerMode: true,
-      warningsAsErrors: false,
-      enableClangTidy: false,
-      enableCppcheck: false,
-      enableSanitizerLeak: true,
-      enableSanitizerUndefined: true,
-      enableSanitizerThread: false,
-      enableSanitizerMemory: false,
-      enableSanitizerAddress: true,
-      enableUnityBuild: false,
-      enablePch: false,
-      enableCache: false,
-      enableIpo: false,
-      enableUserLinker: false,
-      enableCoverage: false,
-      buildFuzzTests: false,
-      enableHardening: false,
-      enableGlobalHardening: false,
-      gitSha: process.env.GITHUB_SHA ? process.env.GITHUB_SHA : 'unkown'
+      throw new Error('Failed to parser cmake presets, please make sure the exists of this preset or the format of the preset is correct')
     }
     this.stateMachine = {
       currentState: State.Setup
@@ -188,11 +173,12 @@ class ProjectContext {
   }
 
   save2File = function () {
-    fs.writeFileSync(this.cachePath, JSON.stringify({
+    saveToJson(this.cachePath, {
+      cmakePreset: this.cmakePreset,
+      cmakeOptions: this.cmakeOptions,
       projectContext: this.projectContext,
-      cmakeOptionsContext: this.cmakeOptionsContext,
       stateMachine: this.stateMachine
-    }, null, 2))
+    })
   }
 }
 
@@ -203,21 +189,12 @@ class Excutor {
     this.context = context
   }
 
-  private refreshEnvFromScript = function (script: string) {
-    if (process.platform === 'win32') {
-      refreshEnv(script)
-    }
-    else if (process.platform === 'linux') {
-      refreshEnv(`source ${script}`)
-    }
-  }
-
   private camelToSnake = function (str: string) {
     return str.replace(/[A-Z]/g, letter => `_${letter}`)
   }
   private cmakeOptionsTransform = function () {
     let cmakeOptions: string[] = []
-    for (const [key, value] of Object.entries(this.context.cmakeOptionsContext)) {
+    for (const [key, value] of Object.entries(this.context.cmakeOptions)) {
       if (typeof value === 'boolean')
         cmakeOptions.push(`-D${this.context.projectContext.projectName}_${this.camelToSnake(key).toUpperCase()}:BOOL=${value ? 'ON' : 'OFF'}`)
       else
@@ -259,15 +236,15 @@ class Excutor {
         false,
         undefined
       );
-      const cmakeConfigreCmd = `"cmake -S . --preset=${this.context.projectContext.cmakePreset} ${this.cmakeOptionsTransform().join(' ')}"`.trim()
-      const copyCompileCommandsCmd = `"if (Test-Path ${this.context.projectContext.sourceDir}/compile_commands.json) { Remove-Item ${this.context.projectContext.sourceDir}/compile_commands.json } New-Item -ItemType SymbolicLink -Path ${this.context.projectContext.sourceDir}/compile_commands.json -Target ${this.context.projectContext.binaryDir}/compile_commands.json"`
+      const cmakeConfigreCmd = `"cmake -S . --preset=${this.context.cmakePreset} ${this.cmakeOptionsTransform().join(' ')}"`.trim()
+      const symlinkCompileCommandsCmd = `"if (Test-Path ${this.context.projectContext.sourceDir}/compile_commands.json) { Remove-Item ${this.context.projectContext.sourceDir}/compile_commands.json } New-Item -ItemType SymbolicLink -Path ${this.context.projectContext.sourceDir}/compile_commands.json -Target ${this.context.projectContext.binaryDir}/compile_commands.json"`
       await this.excutecheckExitCode(cmakeConfigreCmd, 'Cmake configure failed')
-      await this.excutecheckExitCode(copyCompileCommandsCmd, 'Unable to create compile_commands.json')
+      await this.excutecheckExitCode(symlinkCompileCommandsCmd, 'Unable to create compile_commands.json')
     } else if (process.platform === 'linux') {
-      const cmakeConfigreCmd = `cmake -S . --preset=${this.context.projectContext.cmakePreset} ${this.cmakeOptionsTransform().join(' ')}`.trim()
-      const copyCompileCommandsCmd = `ln -sfr ${this.context.projectContext.binaryDir}/compile_commands.json ${this.context.projectContext.sourceDir}/compile_commands.json`
+      const cmakeConfigreCmd = `cmake -S . --preset=${this.context.cmakePreset} ${this.cmakeOptionsTransform().join(' ')}`.trim()
+      const symlinkCompileCommandsCmd = `ln -sfr ${this.context.projectContext.binaryDir}/compile_commands.json ${this.context.projectContext.sourceDir}/compile_commands.json`
       await this.excutecheckExitCode(cmakeConfigreCmd, 'Cmake configure failed')
-      await this.excutecheckExitCode(copyCompileCommandsCmd, 'Unable to create compile_commands.json')
+      await this.excutecheckExitCode(symlinkCompileCommandsCmd, 'Unable to create compile_commands.json')
     } else {
       throw new Error('Unsupported platform or compiler,Only support msvc on windows and gcc on linux')
     }
@@ -277,8 +254,8 @@ class Excutor {
     if (this.context.stateMachine.currentState < State.Config) {
       await this.cmakeConfigure()
     }
-    this.refreshEnvFromScript(`${this.context.projectContext.binaryDir}/conan/build/${this.context.projectContext.buildType}/generators/conanbuild.${script_postfix}`)
-    this.refreshEnvFromScript(`${this.context.projectContext.binaryDir}/conan/build/${this.context.projectContext.buildType}/generators/conanrun.${script_postfix}`)
+    refreshEnv(`${sourceCommandPrefix}${this.context.projectContext.binaryDir}/conan/build/${this.context.projectContext.buildType}/generators/conanbuild.${scriptPostfix}`)
+    refreshEnv(`${sourceCommandPrefix}${this.context.projectContext.binaryDir}/conan/build/${this.context.projectContext.buildType}/generators/conanrun.${scriptPostfix}`)
     if (process.platform === 'win32') {
       setupMSVCDevCmd(
         "x64",
@@ -300,14 +277,11 @@ class Excutor {
   }
 
   runTarget = async function () {
-    if (this.context.cmakeOptionsContext.enableCoverage === true) {
-      // Need to reconfigure the project
-    }
+    this.context.projectContext.buildTarget = this.context.projectContext.launchTarget
     if (this.context.stateMachine.currentState < State.Build) {
       await this.cmakeBuild()
     }
-    this.context.projectContext.buildTarget = this.context.projectContext.launchTarget
-    this.refreshEnvFromScript(`${this.context.projectContext.binaryDir}/conan/build/${this.context.projectContext.buildType}/generators/conanrun.${script_postfix}`)
+    refreshEnv(`${sourceCommandPrefix}${this.context.projectContext.binaryDir}/conan/build/${this.context.projectContext.buildType}/generators/conanrun.${scriptPostfix}`)
     if (process.platform === 'win32') {
       setupMSVCDevCmd(
         "x64",
@@ -333,7 +307,7 @@ class Excutor {
       this.context.projectContext.buildTarget = ['all']
       await this.cmakeBuild()
     }
-    this.refreshEnvFromScript(`${this.context.projectContext.binaryDir}/conan/build/${this.context.projectContext.buildType}/generators/conanrun.${script_postfix}`)
+    refreshEnv(`${sourceCommandPrefix}${this.context.projectContext.binaryDir}/conan/build/${this.context.projectContext.buildType}/generators/conanrun.${scriptPostfix}`)
     if (process.platform === 'win32') {
       setupMSVCDevCmd(
         "x64",
@@ -344,10 +318,10 @@ class Excutor {
         false,
         undefined
       );
-      const runTestCommand = `"ctest --preset ${this.context.projectContext.cmakePreset} ${this.context.projectContext.testArgs.join(' ')}"`.trim()
+      const runTestCommand = `"ctest --preset ${this.context.cmakePreset} ${this.context.projectContext.testArgs.join(' ')}"`.trim()
       await this.excutecheckExitCode(runTestCommand, 'Run test failed')
     } else if (process.platform === 'linux') {
-      const runTestCmd = `ctest --preset ${this.context.projectContext.cmakePreset} ${this.context.projectContext.testArgs.join(' ')}`.trim()
+      const runTestCmd = `ctest --preset ${this.context.cmakePreset} ${this.context.projectContext.testArgs.join(' ')}`.trim()
       await this.excutecheckExitCode(runTestCmd, 'Run test failed')
     } else {
       throw new Error('Unsupported platform or compiler,Only support msvc on windows and gcc on linux')
@@ -356,10 +330,11 @@ class Excutor {
 
   runCov = async function () {
     if (this.context.stateMachine.currentState < State.Build) {
+      this.context.projectContext.buildTarget = ['all']
       await this.cmakeBuild()
     }
     await fs.ensureDir('out/coverage')
-    this.refreshEnvFromScript(`${this.context.projectContext.binaryDir}/conan/build/${this.context.projectContext.buildType}/generators/conanrun.${script_postfix}`)
+    refreshEnv(`${sourceCommandPrefix}${this.context.projectContext.binaryDir}/conan/build/${this.context.projectContext.buildType}/generators/conanrun.${scriptPostfix}`)
     if (process.platform === 'win32') {
       setupMSVCDevCmd(
         "x64",
@@ -370,10 +345,10 @@ class Excutor {
         false,
         undefined
       );
-      const runCovCmd = `"cd out/coverage;OpenCppCoverage.exe --working_dir ${this.context.projectContext.binaryDir} --export_type cobertura:coverage.xml --cover_children -- ctest ${this.context.projectContext.testArgs.join(' ')}"`.trim()
+      const runCovCmd = `"OpenCppCoverage.exe --export_type cobertura:out/coverage/coverage.xml --export_type html:out/coverage --cover_children -- ctest --preset ${this.context.cmakePreset} ${this.context.projectContext.testArgs.join(' ')}"`.trim()
       await this.excutecheckExitCode(runCovCmd, 'Run coverage failed')
     } else if (process.platform === 'linux') {
-      const runTestCmd = `ctest --preset ${this.context.projectContext.cmakePreset} ${this.context.projectContext.testArgs.join(' ')}`.trim()
+      const runTestCmd = `ctest --preset ${this.context.cmakePreset} ${this.context.projectContext.testArgs.join(' ')}`.trim()
       const runCovCmd = `gcovr --delete --root . --print-summary --xml-pretty --xml out/coverage/coverage.xml . --gcov-executable gcov`
       await this.excutecheckExitCode(runTestCmd, 'Run test failed')
       await this.excutecheckExitCode(runCovCmd, 'Run coverage failed')
@@ -456,6 +431,8 @@ function showHelp() {
   console.log(chalk.green(' Run the target'))
   console.log(chalk.green(' tsx project.mts run [target_name]                   ---run the target [target]'))
   console.log(chalk.green(' tsx project.mts run [target_name] [-- target_args]  ---run the target [target_name] with target_args'))
+  console.log(chalk.green(' tsx project.mts run                                 ---rerun last specified target'))
+  console.log(chalk.green(' tsx project.mts run!                                ---rerun last specified target with last args'))
   console.log("\n")
   console.log(chalk.green(' Test the project'))
   console.log(chalk.green(' tsx project.mts test                                ---run all tests'))
@@ -464,8 +441,9 @@ function showHelp() {
   console.log(chalk.green(' Pack the project'))
   console.log(chalk.green(' tsx project.mts pack                                ---pack the project'))
   console.log("\n")
-  console.log(chalk.hex('0xa9cc00')('Usage: tsx project.mts <action> [target] [-- args]'))
+  console.log(chalk.hex('0xa9cc00')('Usage: tsx project.mts <action>[!] [target] [-- args]'))
   console.log(chalk.hex('0xa9cc00')('action: config | clean | build | run | test | install | pack'))
+  console.log(chalk.hex('0xa9cc00')('[!] : reuse last args'))
   console.log(chalk.hex('0xa9cc00')('target: the target to execute the action'))
   console.log(chalk.hex('0xa9cc00')('args: the arguments to pass to the target'))
 }
@@ -506,11 +484,63 @@ async function main() {
     if (myArgv._.length < 2) {
       throw new Error('Please specify a preset to setup')
     }
-    const setup_preset: CmakePresetContext = {
+    const cmakePresetContext: CmakePresetContext = {
       presetsFilePath,
       selectedPreset: myArgv._[1],
     }
-    let context = new ProjectContext({ cmakePreset: setup_preset })
+
+    // NOTE: Change following to set a default value of cmakeOptions
+    const setupContext: SetupContext = {
+      cmakePreset: cmakePresetContext,
+      cmakeOptions: {
+        packagingMaintainerMode: true,
+        warningsAsErrors: false,
+        enableClangTidy: false,
+        enableCppcheck: false,
+        enableSanitizerLeak: true,
+        enableSanitizerUndefined: true,
+        enableSanitizerThread: false,
+        enableSanitizerMemory: false,
+        enableSanitizerAddress: true,
+        enableUnityBuild: false,
+        enablePch: false,
+        enableCache: false,
+        enableIpo: false,
+        enableUserLinker: false,
+        enableCoverage: false,
+        buildFuzzTests: false,
+        enableHardening: false,
+        enableGlobalHardening: false,
+        gitSha: process.env.GITHUB_SHA ? process.env.GITHUB_SHA : 'unkown'
+      }
+    }
+
+    const keys = Object.keys(setupContext.cmakeOptions)
+    const cmakeOptions = Object.entries(myArgv).filter(([key, _]) => {
+      return keys.includes(key)
+    }).map(([key, value]) => {
+      if (typeof value === 'string') {
+        if (value.toUpperCase() == 'ON') {
+          return [key, true] as [string, boolean]
+        } else if (value.toUpperCase() == 'OFF') {
+          return [key, false] as [string, boolean]
+        } else {
+          throw new Error(`Error parameter type for ${key}, use 'ON' or 'OFF' for cmakeOptions`)
+        }
+      } else {
+        throw new Error(`Error parameter type for ${key}, use 'ON' or 'OFF' for cmakeOptions`)
+      }
+    }).reduce((acc, [key, value]) => {
+      acc[key] = value
+      return acc
+    }, {} as CmakeOptions)
+    setupContext.cmakeOptions = { ...setupContext.cmakeOptions, ...cmakeOptions }
+
+    let context = new ProjectContext(setupContext)
+    context.stateMachine.currentState = State.Setup
+    const excutor = new Excutor(context)
+    // make sure we have a clean begin
+    await excutor.clean()
     // remember to save the context to file
     context.save2File()
     return
@@ -518,27 +548,43 @@ async function main() {
 
   const context = new ProjectContext()
   const excutor = new Excutor(context)
+  let argsReuse = false
 
+  if (myArgv._[0].endsWith('!')) {
+    // Reuse last args
+    argsReuse = true
+    myArgv._[0] = myArgv._[0].substring(0, myArgv._[0].length - 1)
+  }
+
+  // To auto rebuild the project when the coverage is disabled,
+  // handle 'cov' command specially
   if (myArgv._[0] == 'cov') {
-    targetContext.args = context.projectContext.testArgs
-    console.log(chalk.greenBright('Getting Coverage of this project...'))
-    if (myArgv['--'] && myArgv['--'].length > 0) {
+    console.log(chalk.greenBright('Running Coverage of this project...'))
+    // Handle args
+    if (argsReuse) {
+      targetContext.args = context.projectContext.testArgs
+    } else if (myArgv['--'] && myArgv['--'].length > 0) {
       targetContext.args = myArgv['--']
-      context.setTargetContext(TargetType.Test, targetContext)
     }
-    if (context.cmakeOptionsContext.enableCoverage === false && context.stateMachine.currentState !== State.Cov) {
+    context.setTargetContext(TargetType.Test, targetContext)
+
+    if (context.cmakeOptions.enableCoverage === false && context.stateMachine.currentState !== State.Cov) {
       console.log(chalk.yellowBright('Coverage is not enabled, trying to enable it and build again...'))
-      context.cmakeOptionsContext.enableCoverage = true
+      context.cmakeOptions.enableCoverage = true
       context.stateMachine.currentState = State.Setup
       await excutor.runCov()
-      context.cmakeOptionsContext.enableCoverage = false
+      context.cmakeOptions.enableCoverage = false
     } else {
+      if (context.stateMachine.currentState > State.Config) {
+        // Force to rebuild the target as some files may be changed
+        context.stateMachine.currentState = State.Config
+      }
       await excutor.runCov()
     }
     context.stateMachine.currentState = State.Cov
   } else {
-    if (context.cmakeOptionsContext.enableCoverage === false && context.stateMachine.currentState === State.Cov && myArgv._[0] != 'clean') {
-      console.log(chalk.yellowBright('Last time run coverage with COVERAGE flag on temporarily, trying to reconfigure the project...'))
+    if (context.cmakeOptions.enableCoverage === false && context.stateMachine.currentState === State.Cov && myArgv._[0] != 'clean') {
+      console.log(chalk.yellowBright('Last time run cmake configure with COVERAGE flag ON temporarily, disable it and reconfigure the project...'))
       // need to reconfigure the project
       context.stateMachine.currentState = State.Setup
     }
@@ -552,6 +598,9 @@ async function main() {
         console.log(chalk.greenBright('Configuring project...'))
         await excutor.cmakeConfigure()
         context.stateMachine.currentState = State.Config
+        // export env to .vscode/launch.json
+        const envList = getEnvDiff(`${sourceCommandPrefix}${context.projectContext.binaryDir}/conan/build/${context.projectContext.buildType}/generators/conanrun.${scriptPostfix}`)
+        replaceJsonNode('.vscode/launch.json', "configurations", ["type", "lldb"], "env", Object.fromEntries(envList))
         break
       case 'build':
         targetContext.target = context.projectContext.buildTarget
@@ -568,8 +617,13 @@ async function main() {
         break
       case 'run':
         targetContext.target = context.projectContext.launchTarget
-        targetContext.args = context.projectContext.launchArgs
-        context.stateMachine.currentState = State.Config
+        if (argsReuse) {
+          targetContext.args = context.projectContext.launchArgs
+        }
+        if (context.stateMachine.currentState > State.Config) {
+          // Force to rebuild the target as some files may be changed
+          context.stateMachine.currentState = State.Config
+        }
         if (myArgv._.length > 1) {
           console.log(chalk.greenBright('Runing target:', myArgv._[1]))
           targetContext.target = myArgv._.slice(1)
@@ -587,10 +641,18 @@ async function main() {
         context.setTargetContext(TargetType.Launch, targetContext)
         await excutor.runTarget()
         context.stateMachine.currentState = State.Run
+        // export args to .vscode/launch.json and .vscode/tasks.json
+        replaceJsonNode('.vscode/launch.json', "configurations", ["type", "lldb"], "program", `${context.projectContext.binaryDir}/bin/${targetContext.target}`)
+        replaceJsonNode('.vscode/launch.json', "configurations", ["type", "lldb"], "args", targetContext.args)
         break
       case 'test':
-        targetContext.args = context.projectContext.testArgs
-        context.stateMachine.currentState = State.Config
+        if (argsReuse) {
+          targetContext.args = context.projectContext.testArgs
+        }
+        if (context.stateMachine.currentState > State.Config) {
+          // Force to rebuild the target as some files may be changed
+          context.stateMachine.currentState = State.Config
+        }
         console.log(chalk.greenBright('Testing project...'))
         if (myArgv['--'] && myArgv['--'].length > 0) {
           console.log(chalk.greenBright('args:', myArgv['--'].join(' ')))
@@ -599,15 +661,22 @@ async function main() {
         }
         await excutor.runTest()
         context.stateMachine.currentState = State.Test
+        replaceJsonNode('.vscode/tasks.json', "tasks", ["group.kind", "test"], "args", targetContext.args)
         break
       case 'install':
-        context.stateMachine.currentState = State.Config
+        if (context.stateMachine.currentState > State.Config) {
+          // Force to rebuild the target as some files may be changed
+          context.stateMachine.currentState = State.Config
+        }
         console.log(chalk.greenBright('Installing project...'))
         await excutor.install()
         context.stateMachine.currentState = State.Install
         break
       case 'pack':
-        context.stateMachine.currentState = State.Config
+        if (context.stateMachine.currentState > State.Config) {
+          // Force to rebuild the target as some files may be changed
+          context.stateMachine.currentState = State.Config
+        }
         console.log(chalk.greenBright('Packing project...'))
         await excutor.cpack()
         context.stateMachine.currentState = State.Pack
@@ -621,8 +690,13 @@ async function main() {
   context.save2File()
 }
 
-try {
+if (NoCallstackOnError) {
+  try {
+    await main()
+  } catch (e) {
+    console.error(chalk.redBright(e))
+    process.exit(1)
+  }
+} else {
   await main()
-} catch (e) {
-  console.error(chalk.redBright(e))
 }

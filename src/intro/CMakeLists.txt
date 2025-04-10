@@ -1,4 +1,4 @@
-add_executable(intro main.cc)
+add_executable(intro main.cc stack.hpp calc.hpp)
 
 find_package(spdlog REQUIRED)
 find_package(jsoncpp REQUIRED)

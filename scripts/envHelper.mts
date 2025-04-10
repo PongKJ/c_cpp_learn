@@ -2,21 +2,21 @@ import child_process from "child_process";
 import process from "process";
 import 'zx/globals'
 
-// Check cmd in env, return the cmd list that not found
-export function findCmdsInEnv(cmdList: string[]) {
-  let not_found_cmds = cmdList.filter((cmd) => {
-    return which.sync(cmd, { nothrow: true }) === null
-  })
-  return not_found_cmds
+export function refreshEnv(cmd: string, error_message_pattern?: RegExp) {
+  const envList = getEnvDiff(cmd, error_message_pattern)
+  for (const [name, value] of envList) {
+    process.env[name] = value
+  }
 }
 
-export function refreshEnv(cmd: string, error_message_pattern?: RegExp) {
+// Run a command in a shell and return the environment variables been changed
+export function getEnvDiff(cmd: string, error_message_pattern?: RegExp): Map<string, string> {
   let old_environment: string[] = []
   let script_output: string[] = []
   let new_environment: string[] = []
   if (process.platform == "win32") {
     const cmd_output_string = child_process
-      .execSync(`set && cls && ${cmd} && cls && set`, { shell: "cmd" })
+   .execSync(`set && cls && ${cmd} && cls && set`.replaceAll("/","\\"), { shell: "cmd" })
       .toString();
     const cmd_output_parts = cmd_output_string.split("\f");
     old_environment = cmd_output_parts[0].split("\r\n");
@@ -67,6 +67,7 @@ export function refreshEnv(cmd: string, error_message_pattern?: RegExp) {
   // Now look at the new environment and export everything that changed.
   // These are the variables set by vsvars.bat. Also export everything
   // that was not there during the first sweep: those are new variables.
+  let envList = new Map<string, string>();
   for (let string of new_environment) {
     // vsvars.bat likes to print some fluff at the beginning.
     // Skip lines that don't look like environment variables.
@@ -84,14 +85,14 @@ export function refreshEnv(cmd: string, error_message_pattern?: RegExp) {
       if (isPathVariable(name)) {
         new_value = filterPathValue(new_value);
       }
-      // console.log(chalk.hex('#2EA51D')(`export ${name}=${new_value}`));
-      process.env[name] = new_value;
+      envList.set(name, new_value)
     }
   }
+  return envList;
 }
 
-function filterPathValue(path) {
-  function unique(value, index, self) {
+function filterPathValue(path: string) {
+  function unique(value: string, index: number, self: string[]) {
     return self.indexOf(value) === index;
   }
   let paths: string[] = [];
@@ -109,7 +110,7 @@ function filterPathValue(path) {
   }
 }
 
-function isPathVariable(name) {
+function isPathVariable(name: string) {
   // TODO: Add more variables to the list.
   const pathLikeVariables = ["PATH", "INCLUDE", "LIB", "LIBPATH"];
   return pathLikeVariables.indexOf(name.toUpperCase()) != -1;

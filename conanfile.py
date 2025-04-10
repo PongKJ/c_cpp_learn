@@ -30,6 +30,7 @@ class ConanApplication(ConanFile):
         self.requires("opencv/4.10.0")
         self.requires("boost/1.86.0")
         self.requires("cli11/2.4.2")
+        self.requires("qt/5.15.16")
 
     def configure(self):
         self.options["opencv"].shared = True

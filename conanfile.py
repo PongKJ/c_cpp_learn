@@ -22,7 +22,6 @@ class ConanApplication(ConanFile):
         # requirements = self.conan_data.get("requirements", [])
         # for requirement in requirements:
         #     self.requires(requirement)
-        self.tool_requires("cmake/3.31.6")
         self.requires("fmt/10.2.1")
         self.requires("gtest/1.15.0")
         self.requires("spdlog/1.14.1")
@@ -30,7 +29,7 @@ class ConanApplication(ConanFile):
         self.requires("dbg-macro/0.5.1")
         self.requires("boost/1.86.0")
         self.requires("cli11/2.4.2")
-        self.requires("qt/5.15.16")
+        self.requires("qt/6.7.3")
         self.requires("opencv/4.10.0")
 
     def configure(self):

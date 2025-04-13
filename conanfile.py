@@ -30,9 +30,6 @@ class ConanApplication(ConanFile):
         self.requires("boost/1.86.0")
         self.requires("cli11/2.4.2")
         self.requires("qt/6.7.3")
-        self.requires("opencv/4.10.0")
 
     def configure(self):
-        self.options["opencv"].shared = True
-        self.options["opencv"].with_wayland = False
         self.options["qt"].with_x11 = False

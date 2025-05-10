@@ -27,7 +27,6 @@ class ConanApplication(ConanFile):
         self.requires("spdlog/1.14.1")
         self.requires("jsoncpp/1.9.6")
         self.requires("dbg-macro/0.5.1")
-        self.requires("boost/1.86.0")
         self.requires("cli11/2.4.2")
         self.requires("qt/6.7.3")
 

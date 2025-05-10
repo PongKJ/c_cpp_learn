@@ -1,4 +1,3 @@
-#include <qnamespace.h>
 #include <qwidget.h>
 #define DBG_MACRO_NO_WARNING
 #include <dbg.h>
@@ -10,9 +9,7 @@
 
 #include <CLI/CLI.hpp>
 #include <QWidget>
-#include <cstdlib>
 #include <internal_use_only/config.hpp>
-#include <iostream>
 
 #include "mainwindow.hpp"
 

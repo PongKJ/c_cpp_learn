@@ -1,14 +1,11 @@
 #include <algorithm>
-#include <bit>
 #include <cctype>
 #include <cmath>
 #include <complex>
 #include <cstddef>
 #include <initializer_list>
-#include <opencv2/calib3d.hpp>
-#include <ranges>
 #include <string>
-#include <vector>
+
 #define DBG_MACRO_NO_WARNING
 #include <dbg.h>
 #include <fmt/core.h>
@@ -20,11 +17,67 @@
 #include <cstdlib>
 #include <internal_use_only/config.hpp>
 #include <iostream>
-#include <opencv2/opencv.hpp>
 
 #include "calc.hpp"
+#include "financial_manager.hpp"
+// #include "shape.h"
+#include "shape.hpp"
+int main() {
+    // 测试数据
+    vector< ThreeDShape* > items = { new ThreeDAnyShape( 23, 92 ), new ThreeDAnyShape( 31, 57 ),
+                                     new ThreeDAnyShape( 29, 49 ), new ThreeDAnyShape( 44, 68 ),
+                                     new ThreeDAnyShape( 53, 60 ), new ThreeDAnyShape( 38, 43 ),
+                                     new ThreeDAnyShape( 63, 67 ), new ThreeDAnyShape( 85, 84 ),
+                                     new ThreeDAnyShape( 89, 87 ), new ThreeDAnyShape( 82, 72 ) };
 
+    Container container( 165 );
+    auto selected = container.selectOptimal( items );
 
+    cout << "最优方案: ";
+    for ( bool sel : selected ) {
+        cout << sel << " ";
+    }
+    cout << endl;
+
+    // 释放内存
+    for ( auto item : items )
+        delete item;
+
+    return 0;
+}
+
+// int main() {
+//     srand( time( nullptr ) );
+//     Person Wang( 100000 );
+//     Wang.addInvest( new Saving( 50000 ) );
+//     Wang.addInvest( new Fund( 20000 ) );
+//     cout << Wang.settle() << endl;
+//     return 0;
+// }
+
+// int main() {
+//     {
+//         Color c( 100 );
+//         Point p1( 2, 3, c );
+//         Point p2( p1 );
+//         Point p3;
+//     }
+//     {
+//         Color c( 100 );
+//         Point p1( 2, 3, c );
+//         Point p2( p1 );
+//         Point p3;
+//         Circle c1( p1, 3 );
+//         Circle c2( c1 );
+//         c2 = c1;
+//     }
+//     {
+//         Point p1( 2, 3, Color( 100 ) );
+//         p1.draw();
+//     }
+//     return 0;
+// }
+//
 // int main( [[maybe_unused]] int argc, [[maybe_unused]] char* argv[] ) {
 //     Calculator calc;
 //     std::string exp;
@@ -244,36 +297,49 @@ void hello_world( int a, int b ) {
     std::cout << "a=" << a << ",b=" << b << std::endl;
 }
 
-int main( [[maybe_unused]] int argc, [[maybe_unused]] char* argv[] ) {
-    int some_value = 10;
-    MyVector< std::string > str_vec{ "", "world" };
-    std::cout << "content of str_vec:";
-    for ( size_t i = 0; i < str_vec.size(); i++ ) {
-        std::cout << str_vec[ i ] << " ";
-    }
-    std::cout << std::endl;
-    MyVector< std::string > str_vec1 = str_vec;
-    std::cout << "content of str_vec1:";
-    for ( size_t i = 0; i < str_vec1.size(); i++ ) {
-        std::cout << str_vec1[ i ] << " ";
-    }
-    std::cout << std::endl;
-    MyVector< std::complex< double > > complex_vec{ { 1.2, 0.0 }, { 2.2, 0.2 } };
-    complex_vec.push_back( { 3.2, 0.3 } );
-    complex_vec.push_back( { 4.2, 0.4 } );
-    std::cout << "content of complex_vec:";
-    for ( size_t i = 0; i < complex_vec.size(); i++ ) {
-        std::cout << complex_vec[ i ] << " ";
-    }
-    std::cout << std::endl;
-    MyVector< std::complex< double > > complex_vec1 = complex_vec;
-    std::cout << "content of complex_vec1:";
-    for ( size_t i = 0; i < complex_vec1.size(); i++ ) {
-        std::cout << complex_vec1[ i ] << " ";
-    }
-    std::cout << std::endl;
-    return 0;
-}
+/// \brief This is the brief description
+///
+/// Here's a \b bold , \e italic and \p typewriter word!
+/// \param foo Doc for foo
+/// \param bar Doc for bar
+/// \param baz Doc for a parameter that does not actually exist
+/// \details Here are some details
+/// \warning Watch Out!
+/// \note This is a note
+/// \note This is another note
+/// \returns Doc for return value
+// int test( int foo, std::string bar );
+//
+// int main( [[maybe_unused]] int argc, [[maybe_unused]] char* argv[] ) {
+//     int some_value = 10;
+//     MyVector< std::string > str_vec{ "", "world" };
+//     std::cout << "content of str_vec:";
+//     for ( size_t i = 0; i < str_vec.size(); i++ ) {
+//         std::cout << str_vec[ i ] << " ";
+//     }
+//     std::cout << std::endl;
+//     MyVector< std::string > str_vec1 = str_vec;
+//     std::cout << "content of str_vec1:";
+//     for ( size_t i = 0; i < str_vec1.size(); i++ ) {
+//         std::cout << str_vec1[ i ] << " ";
+//     }
+//     std::cout << std::endl;
+//     MyVector< std::complex< double > > complex_vec{ { 1.2, 0.0 }, { 2.2, 0.2 } };
+//     complex_vec.push_back( { 3.2, 0.3 } );
+//     complex_vec.push_back( { 4.2, 0.4 } );
+//     std::cout << "content of complex_vec:";
+//     for ( size_t i = 0; i < complex_vec.size(); i++ ) {
+//         std::cout << complex_vec[ i ] << " ";
+//     }
+//     std::cout << std::endl;
+//     MyVector< std::complex< double > > complex_vec1 = complex_vec;
+//     std::cout << "content of complex_vec1:";
+//     for ( size_t i = 0; i < complex_vec1.size(); i++ ) {
+//         std::cout << complex_vec1[ i ] << " ";
+//     }
+//     std::cout << std::endl;
+//     return 0;
+// }
 
 // int main( [[maybe_unused]] int argc, [[maybe_unused]] char* argv[] ) {
 //     spdlog::set_level( spdlog::level::debug );

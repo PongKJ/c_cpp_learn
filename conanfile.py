@@ -28,7 +28,7 @@ class ConanApplication(ConanFile):
         self.requires("jsoncpp/1.9.6")
         self.requires("dbg-macro/0.5.1")
         self.requires("cli11/2.4.2")
-        self.requires("qt/6.7.3")
+        self.requires("qt/6.6.3")
 
     def configure(self):
-        self.options["qt"].with_x11 = False
+        self.options["qt"].shared = True

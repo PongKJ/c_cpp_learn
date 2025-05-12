@@ -2,12 +2,10 @@
 #define DBG_MACRO_NO_WARNING
 #include <dbg.h>
 #include <fmt/core.h>
-#include <json/json.h>
 #include <qapplication.h>
 #include <spdlog/common.h>
 #include <spdlog/spdlog.h>
 
-#include <CLI/CLI.hpp>
 #include <QWidget>
 #include <internal_use_only/config.hpp>
 

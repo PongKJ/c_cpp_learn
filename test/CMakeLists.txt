@@ -19,35 +19,11 @@ endif()
 find_package(GTest REQUIRED)
 include(GoogleTest)
 
-# Provide a simple smoke test to make sure that the CLI works and can display a --help message
-add_test(NAME cli.has_help COMMAND intro --help)
-add_test(NAME cli.show_help_without_args COMMAND intro)
-
-# Provide a test to verify that the version being reported from the application matches the version
-# given to CMake. This will be important once you package your program. Real world shows that this
-# is the kind of simple mistake that is easy to make, but also easy to test for.
-add_test(NAME cli.version_matches COMMAND intro --version)
-set_tests_properties(cli.version_matches PROPERTIES PASS_REGULAR_EXPRESSION "${PROJECT_VERSION}")
-
 add_executable(tests tests.cpp)
-target_link_libraries(
-  tests
-  PRIVATE c_cpp_learn::c_cpp_learn_options
-          c_cpp_learn::c_cpp_learn_warnings
-          gtest::gtest
-          c_cpp_learn::sample_library)
-
-add_executable(constexpr_tests constexpr_tests.cpp)
-target_link_libraries(
-  constexpr_tests
-  PRIVATE c_cpp_learn::c_cpp_learn_options
-          c_cpp_learn::c_cpp_learn_warnings
-          gtest::gtest
-          c_cpp_learn::sample_library)
+target_link_libraries(tests PRIVATE c_cpp_learn::c_cpp_learn_options c_cpp_learn::c_cpp_learn_warnings gtest::gtest)
 
 if(NOT CMAKE_CROSSCOMPILING)
   # Only when not cross-compiling, we can use gtest_discover_tests
   # to automatically discover and register tests to ctest.
   gtest_discover_tests(tests)
-  gtest_discover_tests(constexpr_tests)
 endif()

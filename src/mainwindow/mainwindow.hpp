@@ -1,10 +1,8 @@
 #pragma once
 
+#include <QLineEdit>
 #include <QMainWindow>
-
-namespace Ui {
-class MainWindow;
-}
+#include <QPushButton>
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -14,5 +12,8 @@ public:
     ~MainWindow() override;
 
 private:
-    Ui::MainWindow* ui;
+    QLineEdit* display;
+
+private slots:
+    void onButtonClicked();
 };

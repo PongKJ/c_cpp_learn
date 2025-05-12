@@ -1,3 +1,5 @@
+#pragma once
+#include <c_cpp_learn/sample_library_export.hpp>
 #include <cmath>
 #include <format>
 #include <iostream>
@@ -33,6 +35,7 @@ private:
         return opr == "+" || opr == "-" || opr == "*" || opr == "/" || opr == "^";
     }
     static double readNum( string::const_iterator& it ) {
+        // TODO: Add dot support
         string t;
         while ( isNum( it ) )
             t += *it++;
@@ -50,9 +53,17 @@ private:
         throw invalid_argument( format( "invalid operator:'{}'", *it ) );
     }
     void calculate() {
+        if ( m_opr.top() == "(" ) {
+            // 在此遇到左括号，说明存在未匹配的左括号，直接弹出，不做任何运算
+            // 这时相当于括号不起作用
+            cout << "warn: unmatched bracket find" << endl;
+            m_opr.pop();
+            return;
+        }
         double rhs = m_num.top();
         m_num.pop();
         if ( isBinary( m_opr.top() ) ) {
+            // TODO: refactor this
             double lhs = m_num.top();
             m_num.pop();
             if ( m_opr.top() == "+" ) {
@@ -108,6 +119,23 @@ public:
     Calculator() = default;
     double doIt( const string& exp ) {
         m_num.clear();
+        // 处理空字符串
+        if ( exp.empty() ) {
+            return 0;
+        }
+        // 处理不以等号结尾的表达式
+        if ( exp.back() != '=' ) {
+            throw invalid_argument( "expression should end with '='" );
+        }
+        // 检查字符合法性, 只能检查字符是否合法
+        // NOTE: 不保证组合成的字符串的合法性
+        const string valid_chars = "0123456789+-*/^()sincostanpisqrt.= ";
+        for ( auto c : exp ) {
+            if ( valid_chars.find( c ) == string::npos ) {
+                throw invalid_argument( format( "invalid character:'{}'", c ) );
+            }
+        }
+
         for ( auto it = exp.begin(); it != exp.end(); ) {
             if ( isNum( it ) ) {
                 m_num.push( readNum( it ) );
@@ -128,8 +156,14 @@ public:
                     it++;
                 }
                 else if ( *it == ')' ) {
-                    while ( m_opr.top() != "(" ) {
+                    while ( !m_opr.empty() ) {
+                        if ( m_opr.top() == "(" ) {
+                            break;
+                        }
                         calculate();
+                    }
+                    if ( m_opr.empty() ) {
+                        throw invalid_argument( "unmatched brackets" );
                     }
                     m_opr.pop();  // pop "("
                     it++;

@@ -85,9 +85,6 @@ if(MSVC)
   set_target_properties(${all_targets} PROPERTIES VS_DEBUGGER_ENVIRONMENT "PATH=$(VC_ExecutablePath_x64);%PATH%")
 endif()
 
-# set the startup project for the "play" button in MSVC
-set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT intro)
-
 if(CMAKE_SKIP_INSTALL_RULES)
   return()
 endif()
@@ -98,7 +95,8 @@ include(cmake/PackageProject.cmake)
 # know we want to ship
 c_cpp_learn_package_project(
   TARGETS
-  intro
+  mainwindow
+  # calculator
   # c_cpp_learn_options
   # c_cpp_learn_warnings
   # FIXME: this does not work! CK PRIVATE_DEPENDENCIES_CONFIGURED project_options project_warnings

@@ -1,6 +1,4 @@
-#ifndef STACK_H
-#define STACK_H
-
+#pragma once
 #include <iostream>
 using namespace std;
 
@@ -42,6 +40,9 @@ public:
         return m_top == nullptr;
     }
     const T& top() {
+        if ( empty() ) {
+            throw runtime_error( "Stack is empty" );
+        }
         return m_top->m_value;
     }
     friend ostream& operator<< < T >( ostream&, const Stack< T >& );
@@ -82,5 +83,3 @@ template < typename T > ostream& operator<<( ostream& os, const Stack< T >& s ) 
 
     return os;
 }
-
-#endif  // !STACK_H

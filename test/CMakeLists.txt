@@ -20,7 +20,12 @@ find_package(GTest REQUIRED)
 include(GoogleTest)
 
 add_executable(tests tests.cpp)
-target_link_libraries(tests PRIVATE c_cpp_learn::c_cpp_learn_options c_cpp_learn::c_cpp_learn_warnings gtest::gtest)
+target_link_libraries(
+  tests
+  PRIVATE c_cpp_learn::c_cpp_learn_options
+          c_cpp_learn::c_cpp_learn_warnings
+          gtest::gtest
+          c_cpp_learn::calculator)
 
 if(NOT CMAKE_CROSSCOMPILING)
   # Only when not cross-compiling, we can use gtest_discover_tests

@@ -1,5 +1,4 @@
 #pragma once
-#include <c_cpp_learn/sample_library_export.hpp>
 #include <cmath>
 #include <format>
 #include <iostream>
